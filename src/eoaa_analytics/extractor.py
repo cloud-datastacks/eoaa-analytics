@@ -1,20 +1,19 @@
-"""Helpers for extracting the EOAA Visualizer table payload."""
+"""Helpers for extracting EOAA application status tables from the Greek page."""
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
 import requests
+from bs4 import BeautifulSoup
 
-DEFAULT_PAGE_URL = (
-    "https://eoaa.org.cy/en/eea-statistics-transparency-agency/"
-    "building-application-status/"
-)
-DEFAULT_CHART_ID = "2323"
+DEFAULT_PAGE_URL = "https://eoaa.org.cy/data-transparent-organization/building-application-status/"
 REQUEST_HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (X11; Linux x86_64) "
@@ -22,48 +21,37 @@ REQUEST_HEADERS = {
         "Chrome/123.0.0.0 Safari/537.36"
     ),
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.9",
+    "Accept-Language": "el,en;q=0.9",
 }
-RAW_COLUMN_NAMES = (
-    "record_number",
-    "application_type_code",
-    "development_type",
-    "application_status",
-    "submission_date",
-    "decision_date",
-    "extra_column_1",
-    "extra_column_2",
-    "extra_column_3",
-)
+EXPECTED_HEADERS = [
+    "Τύπος αίτησης",
+    "Περιγραφή αίτησης",
+    "Κατάσταση αίτησης",
+    "Υπο-κατάσταση αίτησης",
+    "Ημερομηνία λήψης",
+    "Ημερομηνία ολοκλήρωσης",
+]
 MODIFIED_TIME_PATTERN = re.compile(
     r'<meta property="article:modified_time" content="([^"]+)"',
     re.IGNORECASE,
 )
+EN_DASH = "\u2013"
+APPLICATION_TYPE_SPLIT_PATTERN = re.compile(rf"\s*[{EN_DASH}-]\s*", re.UNICODE)
 
 
 @dataclass(frozen=True)
-class VisualizerChart:
-    """Structured representation of a Visualizer chart table."""
+class ApplicationsPage:
+    """Structured representation of the EOAA applications page."""
 
-    chart_id: str
-    title: str | None
-    headers: list[str]
-    rows: list[list[Any]]
+    records: list[dict[str, Any]]
     source_url: str
     source_modified_at: str | None
     fetched_at: str
+    table_count: int
 
 
-class VisualizerPayloadError(ValueError):
-    """Raised when the EOAA page payload cannot be extracted."""
-
-
-@dataclass(frozen=True)
-class VisualizerPayload:
-    """Raw Visualizer page payload plus the marker used to find it."""
-
-    marker: str
-    data: dict[str, Any]
+class ApplicationsPageError(ValueError):
+    """Raised when the EOAA applications page cannot be extracted."""
 
 
 def fetch_page_html(url: str = DEFAULT_PAGE_URL, timeout: int = 30) -> str:
@@ -73,131 +61,119 @@ def fetch_page_html(url: str = DEFAULT_PAGE_URL, timeout: int = 30) -> str:
     return response.text
 
 
-def extract_chart_from_html(
+def extract_applications_from_html(
     html: str,
-    chart_id: str = DEFAULT_CHART_ID,
     source_url: str = DEFAULT_PAGE_URL,
-) -> VisualizerChart:
-    """Extract a Visualizer chart payload from EOAA page HTML."""
-    payload = _extract_visualizer_payload(html)
-    charts = payload.data.get("charts", {})
-    chart_key = _resolve_chart_key(charts, chart_id)
-    if chart_key is None:
-        available = ", ".join(sorted(charts))
-        raise VisualizerPayloadError(
-            f"Chart '{chart_id}' not found in payload. Available charts: {available}"
+) -> ApplicationsPage:
+    """Extract all application rows from the EOAA Greek page HTML."""
+    soup = BeautifulSoup(html, "html.parser")
+    tables = soup.find_all("table")
+    modified_match = MODIFIED_TIME_PATTERN.search(html)
+    fetched_at = datetime.now(UTC).isoformat()
+
+    records: list[dict[str, Any]] = []
+    occurrence_by_base_key: defaultdict[tuple[str | None, ...], int] = defaultdict(int)
+    matched_table_count = 0
+
+    for table_index, table in enumerate(tables, start=1):
+        rows = table.find_all("tr")
+        if not rows:
+            continue
+
+        header_cells = rows[0].find_all(["th", "td"])
+        headers = [_clean_text(cell.get_text(" ", strip=True)) for cell in header_cells]
+        if headers != EXPECTED_HEADERS:
+            continue
+
+        matched_table_count += 1
+
+        for row_index, row in enumerate(rows[1:], start=1):
+            cells = [
+                _clean_text(cell.get_text(" ", strip=True))
+                for cell in row.find_all(["th", "td"])
+            ]
+            if not cells or all(cell is None for cell in cells):
+                continue
+
+            padded_cells = cells[: len(EXPECTED_HEADERS)]
+            if len(padded_cells) < len(EXPECTED_HEADERS):
+                padded_cells.extend([None] * (len(EXPECTED_HEADERS) - len(padded_cells)))
+
+            (
+                original_application_type,
+                application_description,
+                status,
+                sub_status,
+                raw_received_date,
+                raw_completion_date,
+            ) = padded_cells
+
+            received_date = _parse_date(raw_received_date)
+            completion_date = _parse_date(raw_completion_date)
+            application_type = _extract_application_type(original_application_type)
+            source_month = received_date[:7] if received_date else None
+
+            base_key = (
+                source_month,
+                original_application_type,
+                application_description,
+                received_date,
+            )
+            occurrence_by_base_key[base_key] += 1
+            occurrence_index = occurrence_by_base_key[base_key]
+
+            records.append(
+                {
+                    "record_id": _build_record_id(*base_key, occurrence_index),
+                    "application_type": application_type,
+                    "original_application_type": original_application_type,
+                    "application_description": application_description,
+                    "status": status,
+                    "sub_status": sub_status,
+                    "received_date": received_date,
+                    "completion_date": completion_date,
+                    "source_month": source_month,
+                    "source_table_index": table_index,
+                    "source_row_index": row_index,
+                    "source_headers_json": json.dumps(headers, ensure_ascii=False),
+                    "source_occurrence_index": occurrence_index,
+                    "source_page_modified_at": (
+                        modified_match.group(1) if modified_match else None
+                    ),
+                    "source_url": source_url,
+                    "fetched_at": fetched_at,
+                    "row_content_hash": _build_row_content_hash(
+                        original_application_type,
+                        application_description,
+                        status,
+                        sub_status,
+                        received_date,
+                        completion_date,
+                    ),
+                }
+            )
+
+    if not records:
+        raise ApplicationsPageError(
+            "Could not find any EOAA application tables with the expected headers"
         )
 
-    chart = charts[chart_key]
-    data = chart.get("data", [])
-    if not data:
-        raise VisualizerPayloadError(f"Chart '{chart_id}' does not contain tabular data")
-
-    series = chart.get("series") or []
-    headers = _extract_headers(chart, data)
-    row_values = data if series else data[1:]
-    rows = [list(row) for row in row_values]
-    modified_match = MODIFIED_TIME_PATTERN.search(html)
-
-    return VisualizerChart(
-        chart_id=chart_id,
-        title=chart.get("title"),
-        headers=headers,
-        rows=rows,
+    return ApplicationsPage(
+        records=records,
         source_url=source_url,
         source_modified_at=modified_match.group(1) if modified_match else None,
-        fetched_at=datetime.now(UTC).isoformat(),
+        fetched_at=fetched_at,
+        table_count=matched_table_count,
     )
 
 
-def fetch_chart(
+def fetch_applications_page(
     url: str = DEFAULT_PAGE_URL,
-    chart_id: str = DEFAULT_CHART_ID,
     timeout: int = 30,
-) -> VisualizerChart:
-    """Fetch the EOAA page and return the requested chart."""
+) -> ApplicationsPage:
+    """Fetch the EOAA applications page and return normalized records."""
     html = fetch_page_html(url=url, timeout=timeout)
-    return extract_chart_from_html(html=html, chart_id=chart_id, source_url=url)
-
-
-def normalize_chart_rows(chart: VisualizerChart) -> list[dict[str, Any]]:
-    """Normalize Visualizer rows into a stable load schema."""
-    records: list[dict[str, Any]] = []
-
-    for row in chart.rows:
-        padded_row = list(row[: len(RAW_COLUMN_NAMES)])
-        if len(padded_row) < len(RAW_COLUMN_NAMES):
-            padded_row.extend([""] * (len(RAW_COLUMN_NAMES) - len(padded_row)))
-
-        raw_record = dict(zip(RAW_COLUMN_NAMES, padded_row, strict=True))
-        records.append(
-            {
-                "record_number": _parse_int(raw_record["record_number"]),
-                "application_type_code": _clean_text(raw_record["application_type_code"]),
-                "development_type": _clean_text(raw_record["development_type"]),
-                "application_status": _clean_text(raw_record["application_status"]),
-                "submission_date": _parse_date(raw_record["submission_date"]),
-                "decision_date": _parse_date(raw_record["decision_date"]),
-                "extra_column_1": _clean_text(raw_record["extra_column_1"]),
-                "extra_column_2": _clean_text(raw_record["extra_column_2"]),
-                "extra_column_3": _clean_text(raw_record["extra_column_3"]),
-                "source_chart_id": chart.chart_id,
-                "source_table_title": chart.title,
-                "source_headers_json": json.dumps(chart.headers, ensure_ascii=False),
-                "source_url": chart.source_url,
-                "source_modified_at": chart.source_modified_at,
-                "fetched_at": chart.fetched_at,
-            }
-        )
-
-    return records
-
-
-def _extract_visualizer_payload(html: str) -> VisualizerPayload:
-    for marker in ("var visualizer =", "var visualizerObj ="):
-        marker_index = html.find(marker)
-        if marker_index == -1:
-            continue
-
-        start_index = html.find("{", marker_index)
-        if start_index == -1:
-            raise VisualizerPayloadError(
-                "Could not locate start of visualizer JSON payload"
-            )
-
-        decoder = json.JSONDecoder()
-        try:
-            payload, _ = decoder.raw_decode(html[start_index:])
-        except json.JSONDecodeError as exc:
-            raise VisualizerPayloadError(
-                f"Failed to decode visualizer JSON payload for marker '{marker}'"
-            ) from exc
-
-        return VisualizerPayload(marker=marker, data=payload)
-
-    raise VisualizerPayloadError("Could not find a supported Visualizer payload marker")
-
-
-def _resolve_chart_key(charts: dict[str, Any], chart_id: str) -> str | None:
-    if chart_id in charts:
-        return chart_id
-
-    for key in charts:
-        if key.startswith(f"visualizer-{chart_id}-"):
-            return key
-
-    return None
-
-
-def _extract_headers(chart: dict[str, Any], rows: list[list[Any]]) -> list[str]:
-    series = chart.get("series") or []
-    if series:
-        return [str(item.get("label", "")).strip() for item in series]
-
-    if rows:
-        return [str(value).strip() for value in rows[0]]
-
-    return []
+    return extract_applications_from_html(html=html, source_url=url)
 
 
 def _clean_text(value: Any) -> str | None:
@@ -208,20 +184,47 @@ def _clean_text(value: Any) -> str | None:
     return text or None
 
 
-def _parse_int(value: Any) -> int | None:
-    text = _clean_text(value)
-    if text is None:
-        return None
-
-    try:
-        return int(text)
-    except ValueError:
-        return None
-
-
 def _parse_date(value: Any) -> str | None:
     text = _clean_text(value)
     if text is None:
         return None
 
-    return datetime.strptime(text, "%d/%m/%Y").date().isoformat()
+    for date_format in ("%d/%m/%y", "%d/%m/%Y"):
+        try:
+            return datetime.strptime(text, date_format).date().isoformat()
+        except ValueError:
+            continue
+
+    raise ApplicationsPageError(f"Unsupported EOAA date format: {text}")
+
+
+def _extract_application_type(value: str | None) -> str | None:
+    text = _clean_text(value)
+    if text is None:
+        return None
+
+    return APPLICATION_TYPE_SPLIT_PATTERN.split(text, maxsplit=1)[0].strip() or None
+
+
+def _build_record_id(
+    source_month: str | None,
+    original_application_type: str | None,
+    application_description: str | None,
+    received_date: str | None,
+    occurrence_index: int,
+) -> str:
+    raw_key = "||".join(
+        [
+            source_month or "",
+            original_application_type or "",
+            application_description or "",
+            received_date or "",
+            str(occurrence_index),
+        ]
+    )
+    return hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
+
+
+def _build_row_content_hash(*values: str | None) -> str:
+    raw_value = "||".join(value or "" for value in values)
+    return hashlib.sha256(raw_value.encode("utf-8")).hexdigest()

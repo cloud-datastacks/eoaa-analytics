@@ -1,90 +1,95 @@
-"""Tests for EOAA Visualizer extraction."""
+"""Tests for EOAA application table extraction."""
 
-from eoaa_analytics.extractor import (
-    extract_chart_from_html,
-    normalize_chart_rows,
-)
+from eoaa_analytics.extractor import extract_applications_from_html
+
+EN_DASH = "\u2013"
 
 SAMPLE_HTML = """
 <html>
   <head>
-    <meta property="article:modified_time" content="2025-06-19T10:04:54+00:00" />
+    <meta property="article:modified_time" content="2026-04-15T09:43:34+00:00" />
   </head>
   <body>
-    <script>
-      var visualizerObj = {
-        "charts": {
-          "2323": {
-            "title": "",
-            "data": [
-              ["A/A", "TYPE", "DEVELOPMENT", "STATUS", "SUBMITTED", "DECIDED", "X1", "X2", "X3"],
-              [1, "EA15", "HOUSE", "Completed", "09/05/2025", "26/05/2025", " ", "", null],
-              [2, "EA2", "ROAD", "Under Study", "12/05/2025", "", "", "", ""]
-            ]
-          }
-        }
-      };
-    </script>
+    <table>
+      <tbody>
+        <tr>
+          <td>Τύπος αίτησης</td>
+          <td>Περιγραφή αίτησης</td>
+          <td>Κατάσταση αίτησης</td>
+          <td>Υπο-κατάσταση αίτησης</td>
+          <td>Ημερομηνία λήψης</td>
+          <td>Ημερομηνία ολοκλήρωσης</td>
+        </tr>
+        <tr>
+          <td>EA15 __EN_DASH__ Ταχεία Διαδικασία Έκδοσης</td>
+          <td>Ανάπτυξη</td>
+          <td>Ολοκλήρωση</td>
+          <td>Εγκρίθηκε</td>
+          <td>01/07/24</td>
+          <td>29/11/24</td>
+        </tr>
+        <tr>
+          <td>EA15 __EN_DASH__ Ταχεία Διαδικασία Έκδοσης</td>
+          <td>Ανάπτυξη</td>
+          <td>Μελέτη</td>
+          <td>Μελέτη</td>
+          <td>01/07/24</td>
+          <td></td>
+        </tr>
+      </tbody>
+    </table>
+    <table>
+      <tbody>
+        <tr>
+          <td>Τύπος αίτησης</td>
+          <td>Περιγραφή αίτησης</td>
+          <td>Κατάσταση αίτησης</td>
+          <td>Υπο-κατάσταση αίτησης</td>
+          <td>Ημερομηνία λήψης</td>
+          <td>Ημερομηνία ολοκλήρωσης</td>
+        </tr>
+        <tr>
+          <td>EA2 - Ταχεία Διαδικασία Έκδοσης</td>
+          <td>Διαίρεση γής</td>
+          <td>Ολοκλήρωση</td>
+          <td>Απορρίπτεται</td>
+          <td>2/8/2024</td>
+          <td>30/8/2024</td>
+        </tr>
+      </tbody>
+    </table>
   </body>
 </html>
-"""
-
-LIVE_STYLE_SAMPLE_HTML = """
-<html>
-  <body>
-    <script>
-      var visualizer = {
-        "charts": {
-          "visualizer-2323-126624262": {
-            "title": "",
-            "series": [
-              {"label": "A/A", "type": "number"},
-              {"label": "Type", "type": "string"},
-              {"label": "Description", "type": "string"},
-              {"label": "Status", "type": "string"},
-              {"label": "Submission Date", "type": "date"},
-              {"label": "Decision Date", "type": "date"}
-            ],
-            "data": [
-              [10, "EA15", "HOUSE", "Completed", "09/05/2025", "26/05/2025", " ", " ", " "]
-            ]
-          }
-        }
-      };
-    </script>
-  </body>
-</html>
-"""
+""".replace("__EN_DASH__", EN_DASH)
 
 
-def test_extract_chart_from_html_reads_visualizer_payload() -> None:
-    """The extractor should decode the embedded Visualizer payload."""
-    chart = extract_chart_from_html(SAMPLE_HTML)
+def test_extract_applications_from_html_parses_all_tables() -> None:
+    """The extractor should parse all EOAA monthly application tables."""
+    page = extract_applications_from_html(SAMPLE_HTML)
 
-    assert chart.chart_id == "2323"
-    assert chart.headers[0] == "A/A"
-    assert chart.source_modified_at == "2025-06-19T10:04:54+00:00"
-    assert len(chart.rows) == 2
-
-
-def test_normalize_chart_rows_maps_dates_and_metadata() -> None:
-    """Normalized rows should parse dates and attach source metadata."""
-    chart = extract_chart_from_html(SAMPLE_HTML)
-
-    rows = normalize_chart_rows(chart)
-
-    assert rows[0]["record_number"] == 1
-    assert rows[0]["application_type_code"] == "EA15"
-    assert rows[0]["submission_date"] == "2025-05-09"
-    assert rows[0]["decision_date"] == "2025-05-26"
-    assert rows[0]["extra_column_1"] is None
-    assert rows[0]["source_chart_id"] == "2323"
-    assert rows[1]["decision_date"] is None
+    assert page.table_count == 2
+    assert len(page.records) == 3
+    assert page.source_modified_at == "2026-04-15T09:43:34+00:00"
 
 
-def test_extract_chart_from_live_style_visualizer_payload() -> None:
-    """The extractor should support the current live `var visualizer` payload."""
-    chart = extract_chart_from_html(LIVE_STYLE_SAMPLE_HTML)
+def test_extract_applications_from_html_renames_and_normalizes_fields() -> None:
+    """The extractor should emit the requested output schema."""
+    page = extract_applications_from_html(SAMPLE_HTML)
 
-    assert chart.headers[0] == "A/A"
-    assert chart.rows[0][0] == 10
+    first = page.records[0]
+    second = page.records[1]
+    third = page.records[2]
+
+    assert first["application_type"] == "EA15"
+    assert first["original_application_type"] == f"EA15 {EN_DASH} Ταχεία Διαδικασία Έκδοσης"
+    assert first["application_description"] == "Ανάπτυξη"
+    assert first["status"] == "Ολοκλήρωση"
+    assert first["sub_status"] == "Εγκρίθηκε"
+    assert first["received_date"] == "2024-07-01"
+    assert first["completion_date"] == "2024-11-29"
+    assert first["source_month"] == "2024-07"
+    assert first["source_occurrence_index"] == 1
+    assert second["source_occurrence_index"] == 2
+    assert second["completion_date"] is None
+    assert third["application_type"] == "EA2"
+    assert third["received_date"] == "2024-08-02"

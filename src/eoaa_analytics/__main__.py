@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 
-from eoaa_analytics.extractor import DEFAULT_CHART_ID, DEFAULT_PAGE_URL
+from eoaa_analytics.extractor import DEFAULT_PAGE_URL
 from eoaa_analytics.pipeline import (
     DEFAULT_DATABASE_PATH,
     DEFAULT_DATASET_NAME,
@@ -19,7 +19,6 @@ def build_parser() -> argparse.ArgumentParser:
         description="Load EOAA building application status data into DuckDB with dlt."
     )
     parser.add_argument("--url", default=DEFAULT_PAGE_URL, help="Source EOAA page URL.")
-    parser.add_argument("--chart-id", default=DEFAULT_CHART_ID, help="Visualizer chart id.")
     parser.add_argument(
         "--db-path",
         default=str(DEFAULT_DATABASE_PATH),
@@ -35,6 +34,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_PIPELINE_NAME,
         help="dlt pipeline name.",
     )
+    parser.add_argument(
+        "--force-refresh",
+        action="store_true",
+        help="Ignore the stored page modified timestamp and reload the source.",
+    )
     return parser
 
 
@@ -43,10 +47,10 @@ def main() -> int:
     args = build_parser().parse_args()
     load_info = run_pipeline(
         url=args.url,
-        chart_id=args.chart_id,
         database_path=args.db_path,
         dataset_name=args.dataset_name,
         pipeline_name=args.pipeline_name,
+        force_refresh=args.force_refresh,
     )
     print(load_info)
     return 0

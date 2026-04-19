@@ -12,6 +12,7 @@ authors = [
   { name = "George Matheou", email = "g.matheou@hotmail.com" }
 ]
 dependencies = [
+  "beautifulsoup4>=4.12.0",
   "dlt[duckdb]>=1.0.0",
   "requests>=2.32.0",
 ]
