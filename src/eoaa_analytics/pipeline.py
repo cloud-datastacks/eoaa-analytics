@@ -13,9 +13,10 @@ from eoaa_analytics.extractor import DEFAULT_PAGE_URL, fetch_applications_page
 DEFAULT_DATABASE_PATH = Path("data") / "eoaa_db.duckdb"
 DEFAULT_APPLICATION_TYPES_CSV_PATH = Path("data") / "application_types.csv"
 DEFAULT_DATASET_NAME = "eoaa_data"
-DEFAULT_PIPELINE_NAME = "eoaa_building_application_status_gr_v2"
+DEFAULT_PIPELINE_NAME = "eoaa_building_application_status"
 DEFAULT_TABLE_NAME = "building_application_status"
 APPLICATION_TYPES_TABLE_NAME = "application_types"
+
 RESOURCE_COLUMNS = {
     "application_type": {"data_type": "text"},
     "original_application_type": {"data_type": "text"},
@@ -33,6 +34,7 @@ RESOURCE_COLUMNS = {
     "fetched_at": {"data_type": "text"},
     "row_content_hash": {"data_type": "text"},
 }
+
 APPLICATION_TYPES_COLUMNS = {
     "type": {"data_type": "text"},
     "description_en": {"data_type": "text"},
@@ -100,9 +102,7 @@ def load_application_types_csv(csv_path: str | Path) -> list[dict[str, str]]:
         reader = csv.DictReader(file_obj)
         expected_fields = ["type", "description_en", "description_gr"]
         if reader.fieldnames != expected_fields:
-            raise ValueError(
-                f"Unexpected application types CSV headers: {reader.fieldnames}"
-            )
+            raise ValueError(f"Unexpected application types CSV headers: {reader.fieldnames}")
         return [
             {
                 "type": (row["type"] or "").strip(),

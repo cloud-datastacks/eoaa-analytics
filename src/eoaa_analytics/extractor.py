@@ -86,10 +86,7 @@ def extract_applications_from_html(
         matched_table_count += 1
 
         for row_index, row in enumerate(rows[1:], start=1):
-            cells = [
-                _clean_text(cell.get_text(" ", strip=True))
-                for cell in row.find_all(["th", "td"])
-            ]
+            cells = [_clean_text(cell.get_text(" ", strip=True)) for cell in row.find_all(["th", "td"])]
             if not cells or all(cell is None for cell in cells):
                 continue
 
@@ -124,9 +121,7 @@ def extract_applications_from_html(
                     "source_table_index": table_index,
                     "source_row_index": row_index,
                     "source_headers_json": json.dumps(headers, ensure_ascii=False),
-                    "source_page_modified_at": (
-                        modified_match.group(1) if modified_match else None
-                    ),
+                    "source_page_modified_at": (modified_match.group(1) if modified_match else None),
                     "source_url": source_url,
                     "fetched_at": fetched_at,
                     "row_content_hash": _build_row_content_hash(
@@ -141,9 +136,7 @@ def extract_applications_from_html(
             )
 
     if not records:
-        raise ApplicationsPageError(
-            "Could not find any EOAA application tables with the expected headers"
-        )
+        raise ApplicationsPageError("Could not find any EOAA application tables with the expected headers")
 
     return ApplicationsPage(
         records=records,
