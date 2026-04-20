@@ -88,8 +88,7 @@ def test_extract_applications_from_html_renames_and_normalizes_fields() -> None:
     assert first["received_date"] == "2024-07-01"
     assert first["completion_date"] == "2024-11-29"
     assert first["source_month"] == "2024-07"
-    assert first["source_occurrence_index"] == 1
-    assert second["source_occurrence_index"] == 2
+    assert "record_id" not in first
     assert second["completion_date"] is None
     assert third["application_type"] == "EA2"
     assert third["received_date"] == "2024-08-02"

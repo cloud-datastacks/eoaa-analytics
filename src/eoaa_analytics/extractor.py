@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -72,7 +71,6 @@ def extract_applications_from_html(
     fetched_at = datetime.now(UTC).isoformat()
 
     records: list[dict[str, Any]] = []
-    occurrence_by_base_key: defaultdict[tuple[str | None, ...], int] = defaultdict(int)
     matched_table_count = 0
 
     for table_index, table in enumerate(tables, start=1):
@@ -113,18 +111,8 @@ def extract_applications_from_html(
             application_type = _extract_application_type(original_application_type)
             source_month = received_date[:7] if received_date else None
 
-            base_key = (
-                source_month,
-                original_application_type,
-                application_description,
-                received_date,
-            )
-            occurrence_by_base_key[base_key] += 1
-            occurrence_index = occurrence_by_base_key[base_key]
-
             records.append(
                 {
-                    "record_id": _build_record_id(*base_key, occurrence_index),
                     "application_type": application_type,
                     "original_application_type": original_application_type,
                     "application_description": application_description,
@@ -136,7 +124,6 @@ def extract_applications_from_html(
                     "source_table_index": table_index,
                     "source_row_index": row_index,
                     "source_headers_json": json.dumps(headers, ensure_ascii=False),
-                    "source_occurrence_index": occurrence_index,
                     "source_page_modified_at": (
                         modified_match.group(1) if modified_match else None
                     ),
@@ -204,25 +191,6 @@ def _extract_application_type(value: str | None) -> str | None:
         return None
 
     return APPLICATION_TYPE_SPLIT_PATTERN.split(text, maxsplit=1)[0].strip() or None
-
-
-def _build_record_id(
-    source_month: str | None,
-    original_application_type: str | None,
-    application_description: str | None,
-    received_date: str | None,
-    occurrence_index: int,
-) -> str:
-    raw_key = "||".join(
-        [
-            source_month or "",
-            original_application_type or "",
-            application_description or "",
-            received_date or "",
-            str(occurrence_index),
-        ]
-    )
-    return hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
 
 
 def _build_row_content_hash(*values: str | None) -> str:

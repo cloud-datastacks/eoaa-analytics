@@ -6,6 +6,7 @@ import argparse
 
 from eoaa_analytics.extractor import DEFAULT_PAGE_URL
 from eoaa_analytics.pipeline import (
+    DEFAULT_APPLICATION_TYPES_CSV_PATH,
     DEFAULT_DATABASE_PATH,
     DEFAULT_DATASET_NAME,
     DEFAULT_PIPELINE_NAME,
@@ -25,6 +26,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Path to the DuckDB database file.",
     )
     parser.add_argument(
+        "--application-types-csv-path",
+        default=str(DEFAULT_APPLICATION_TYPES_CSV_PATH),
+        help="Path to the local application types CSV file.",
+    )
+    parser.add_argument(
         "--dataset-name",
         default=DEFAULT_DATASET_NAME,
         help="DuckDB schema name created by dlt.",
@@ -33,11 +39,6 @@ def build_parser() -> argparse.ArgumentParser:
         "--pipeline-name",
         default=DEFAULT_PIPELINE_NAME,
         help="dlt pipeline name.",
-    )
-    parser.add_argument(
-        "--force-refresh",
-        action="store_true",
-        help="Ignore the stored page modified timestamp and reload the source.",
     )
     return parser
 
@@ -48,9 +49,9 @@ def main() -> int:
     load_info = run_pipeline(
         url=args.url,
         database_path=args.db_path,
+        application_types_csv_path=args.application_types_csv_path,
         dataset_name=args.dataset_name,
         pipeline_name=args.pipeline_name,
-        force_refresh=args.force_refresh,
     )
     print(load_info)
     return 0
