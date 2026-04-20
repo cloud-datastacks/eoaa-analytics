@@ -156,7 +156,23 @@ def render_applications(database_path: str) -> None:
         st.session_state[page_state_key] = 1
 
     total_rows = len(filtered)
-    controls_col_left, controls_col_center, controls_col_right = st.columns([1.4, 1.2, 1.4])
+    st.markdown(
+        """
+        <style>
+        div[data-testid="stButton"] > button {
+            min-height: 2.1rem;
+            padding: 0.2rem 0.55rem;
+            font-size: 0.95rem;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    controls_col_left, controls_spacer, prev_col, info_col, next_col = st.columns(
+        [1.25, 2.0, 0.32, 0.85, 0.32],
+        vertical_alignment="center",
+    )
 
     with controls_col_left:
         page_size = st.selectbox("Rows per page", [20, 50, 100], index=0)
@@ -165,20 +181,9 @@ def render_applications(database_path: str) -> None:
     st.session_state[page_state_key] = min(st.session_state[page_state_key], total_pages)
     current_page = st.session_state[page_state_key]
 
-    with controls_col_center:
-        st.markdown(
-            (
-                "<div style='text-align: center; padding-top: 2rem;'>"
-                f"<div style='font-size: 0.95rem; font-weight: 600;'>Page {current_page} of {total_pages}</div>"
-                f"<div style='font-size: 0.85rem; color: #6b7280;'>{total_rows:,} matching applications</div>"
-                "</div>"
-            ),
-            unsafe_allow_html=True,
-        )
-
-    nav_col_left, nav_col_right = controls_col_right.columns(2)
-    nav_col_left.button(
-        "← Previous",
+    prev_col.button(
+        "←",
+        key="applications_prev_page",
         disabled=current_page <= 1,
         use_container_width=True,
         on_click=lambda: st.session_state.__setitem__(
@@ -186,8 +191,21 @@ def render_applications(database_path: str) -> None:
             max(1, st.session_state[page_state_key] - 1),
         ),
     )
-    nav_col_right.button(
-        "Next →",
+
+    with info_col:
+        st.markdown(
+            (
+                "<div style='text-align: center; padding-top: 0.15rem;'>"
+                f"<div style='font-size: 0.95rem; font-weight: 600; white-space: nowrap;'>Page {current_page} of {total_pages}</div>"
+                f"<div style='font-size: 0.98rem; font-weight: 600; color: #4b5563;'>{total_rows:,} matches</div>"
+                "</div>"
+            ),
+            unsafe_allow_html=True,
+        )
+
+    next_col.button(
+        "→",
+        key="applications_next_page",
         disabled=current_page >= total_pages,
         use_container_width=True,
         on_click=lambda: st.session_state.__setitem__(
