@@ -117,10 +117,12 @@ def render_applications(database_path: str) -> None:
         st.warning("No application records were found.")
         return
 
-    year_options = ["All years", *[str(year) for year in sorted(applications["year"].dropna().astype(int).unique())]]
+    year_options = [
+        "All years",
+        *[str(year) for year in sorted(applications["year"].dropna().astype(int).unique())],
+    ]
     type_options = ["All types", *sorted(applications["application_type"].dropna().astype(str).unique())]
     status_options = ["All statuses", *sorted(applications["status"].dropna().astype(str).unique())]
-    sub_status_options = ["All sub-statuses", *sorted(applications["sub_status"].dropna().astype(str).unique())]
 
     filter_year, filter_type = st.columns(2)
     filter_status, filter_sub_status = st.columns(2)
@@ -128,6 +130,15 @@ def render_applications(database_path: str) -> None:
     selected_year = filter_year.selectbox("Year", year_options, index=0)
     selected_type = filter_type.selectbox("Application type", type_options, index=0)
     selected_status = filter_status.selectbox("Status", status_options, index=0)
+
+    sub_status_source = applications
+    if selected_status != "All statuses":
+        sub_status_source = applications[applications["status"] == selected_status]
+
+    sub_status_options = [
+        "All sub-statuses",
+        *sorted(sub_status_source["sub_status"].dropna().astype(str).unique()),
+    ]
     selected_sub_status = filter_sub_status.selectbox("Sub-status", sub_status_options, index=0)
 
     filtered = applications.copy()
@@ -140,12 +151,60 @@ def render_applications(database_path: str) -> None:
     if selected_sub_status != "All sub-statuses":
         filtered = filtered[filtered["sub_status"] == selected_sub_status]
 
-    st.metric("Matching applications", f"{len(filtered):,}")
+    page_state_key = "applications_current_page"
+    if page_state_key not in st.session_state:
+        st.session_state[page_state_key] = 1
+
+    total_rows = len(filtered)
+    controls_col_left, controls_col_center, controls_col_right = st.columns([1.4, 1.2, 1.4])
+
+    with controls_col_left:
+        page_size = st.selectbox("Rows per page", [20, 50, 100], index=0)
+
+    total_pages = max(1, (total_rows + page_size - 1) // page_size)
+    st.session_state[page_state_key] = min(st.session_state[page_state_key], total_pages)
+    current_page = st.session_state[page_state_key]
+
+    with controls_col_center:
+        st.markdown(
+            (
+                "<div style='text-align: center; padding-top: 2rem;'>"
+                f"<div style='font-size: 0.95rem; font-weight: 600;'>Page {current_page} of {total_pages}</div>"
+                f"<div style='font-size: 0.85rem; color: #6b7280;'>{total_rows:,} matching applications</div>"
+                "</div>"
+            ),
+            unsafe_allow_html=True,
+        )
+
+    nav_col_left, nav_col_right = controls_col_right.columns(2)
+    nav_col_left.button(
+        "← Previous",
+        disabled=current_page <= 1,
+        use_container_width=True,
+        on_click=lambda: st.session_state.__setitem__(
+            page_state_key,
+            max(1, st.session_state[page_state_key] - 1),
+        ),
+    )
+    nav_col_right.button(
+        "Next →",
+        disabled=current_page >= total_pages,
+        use_container_width=True,
+        on_click=lambda: st.session_state.__setitem__(
+            page_state_key,
+            min(total_pages, st.session_state[page_state_key] + 1),
+        ),
+    )
+
+    start_index = (current_page - 1) * page_size
+    end_index = start_index + page_size
+    paginated = filtered.iloc[start_index:end_index]
 
     st.dataframe(
-        filtered,
+        paginated,
         use_container_width=True,
         hide_index=True,
+        height=500,
         column_config={
             "year": st.column_config.NumberColumn("Year", format="%d"),
             "application_type": "Application type",
