@@ -82,6 +82,7 @@ def render_dashboard(database_path: str) -> None:
     st.subheader("Applications per year")
 
     yearly_data = load_applications_per_year(database_path)
+    applications = load_applications(database_path)
     if yearly_data.empty:
         st.warning("No application records with a received date were found.")
         return
@@ -94,16 +95,56 @@ def render_dashboard(database_path: str) -> None:
     metric_col.metric("Total applications", f"{total_applications:,}")
     range_col.metric("Year range", f"{first_year} - {last_year}")
 
-    chart_data = yearly_data.set_index("year")
-    st.bar_chart(chart_data, y="number_of_applications", use_container_width=True)
+    chart_data = yearly_data.rename(
+        columns={"number_of_applications": "Number of applications"}
+    ).set_index("year")
+    st.bar_chart(chart_data, y="Number of applications", height=320, use_container_width=True)
+
+    st.subheader("Application type statistics")
+    type_stats = (
+        applications.assign(is_completed=applications["completion_date"].notna().astype(int))
+        .groupby(["application_type", "description_gr"], dropna=False)
+        .agg(
+            number_of_applications=("application_type", "size"),
+            completed_applications=("is_completed", "sum"),
+            avg_duration_in_days=("duration_in_days", "mean"),
+        )
+        .reset_index()
+        .sort_values(["number_of_applications", "application_type"], ascending=[False, True])
+    )
+
+    type_stats["application_type"] = type_stats["application_type"].fillna("Unknown")
+    type_stats["description_gr"] = type_stats["description_gr"].fillna("")
+    type_stats["avg_duration_in_days"] = type_stats["avg_duration_in_days"].round(1)
+
+    top_type = type_stats.iloc[0]
+    unique_types = int(type_stats["application_type"].nunique())
+    top_col, type_count_col = st.columns(2)
+    top_col.metric("Most common application type", str(top_type["application_type"]))
+    type_count_col.metric("Unique application types", f"{unique_types:,}")
+
+    type_chart_data = type_stats.rename(
+        columns={"number_of_applications": "Number of applications"}
+    ).set_index("application_type")
+    st.bar_chart(type_chart_data, y="Number of applications", height=360, use_container_width=True)
 
     st.dataframe(
-        yearly_data,
+        type_stats,
         use_container_width=True,
         hide_index=True,
+        height=360,
         column_config={
-            "year": st.column_config.NumberColumn("Year", format="%d"),
-            "number_of_applications": st.column_config.NumberColumn("Applications", format="%d"),
+            "application_type": "Application type",
+            "description_gr": "Description (GR)",
+            "number_of_applications": st.column_config.NumberColumn(
+                "Number of applications", format="%d"
+            ),
+            "completed_applications": st.column_config.NumberColumn(
+                "Completed applications", format="%d"
+            ),
+            "avg_duration_in_days": st.column_config.NumberColumn(
+                "Average duration (days)", format="%.1f"
+            ),
         },
     )
 
@@ -116,6 +157,9 @@ def render_applications(database_path: str) -> None:
     if applications.empty:
         st.warning("No application records were found.")
         return
+
+    applications = applications.copy()
+    applications["description_gr"] = applications["description_gr"].fillna("Missing mapping")
 
     year_options = [
         "All years",
@@ -225,9 +269,9 @@ def render_applications(database_path: str) -> None:
         height=500,
         column_config={
             "year": st.column_config.NumberColumn("Year", format="%d"),
-            "application_type": "Application type",
-            "description_gr": "Description (GR)",
-            "application_description": "Application description",
+            "application_type": "Type",
+            "description_gr": "Type Description (GR)",
+            "application_description": "Description",
             "status": "Status",
             "sub_status": "Sub-status",
             "received_date": st.column_config.DateColumn("Received date"),

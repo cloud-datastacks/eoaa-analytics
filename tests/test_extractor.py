@@ -49,7 +49,7 @@ SAMPLE_HTML = """
           <td>Ημερομηνία ολοκλήρωσης</td>
         </tr>
         <tr>
-          <td>EA2 - Ταχεία Διαδικασία Έκδοσης</td>
+          <td>EΑ2 - Ταχεία Διαδικασία Έκδοσης</td>
           <td>Διαίρεση γής</td>
           <td>Ολοκλήρωση</td>
           <td>Απορρίπτεται</td>
@@ -80,7 +80,7 @@ def test_extract_applications_from_html_renames_and_normalizes_fields() -> None:
     second = page.records[1]
     third = page.records[2]
 
-    assert first["application_type"] == "EA15"
+    assert first["application_type"] == "ΕΑ15"
     assert first["original_application_type"] == f"EA15 {EN_DASH} Ταχεία Διαδικασία Έκδοσης"
     assert first["application_description"] == "Ανάπτυξη"
     assert first["status"] == "Ολοκλήρωση"
@@ -90,5 +90,5 @@ def test_extract_applications_from_html_renames_and_normalizes_fields() -> None:
     assert first["source_month"] == "2024-07"
     assert "record_id" not in first
     assert second["completion_date"] is None
-    assert third["application_type"] == "EA2"
+    assert third["application_type"] == "ΕΑ2"
     assert third["received_date"] == "2024-08-02"

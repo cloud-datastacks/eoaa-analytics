@@ -19,12 +19,12 @@ def test_load_application_types_csv_reads_expected_rows(tmp_path: Path) -> None:
 
     assert rows == [
         {
-            "type": "EA15",
+            "type": "ΕΑ15",
             "description_en": "application for building development/ change of use",
             "description_gr": "αίτηση για οικοδομική ανάπτυξη/ αλλαγή χρήσης",
         },
         {
-            "type": "EA2",
+            "type": "ΕΑ2",
             "description_en": "application for land division/road construction",
             "description_gr": "αίτηση για διαχωρισμό γης/ κατασκευή δρόμου",
         },

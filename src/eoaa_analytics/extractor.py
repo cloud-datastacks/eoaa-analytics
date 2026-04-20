@@ -36,6 +36,24 @@ MODIFIED_TIME_PATTERN = re.compile(
 )
 EN_DASH = "\u2013"
 APPLICATION_TYPE_SPLIT_PATTERN = re.compile(rf"\s*[{EN_DASH}-]\s*", re.UNICODE)
+LATIN_TO_GREEK_APPLICATION_TYPE_MAP = str.maketrans(
+    {
+        "A": "Α",
+        "B": "Β",
+        "E": "Ε",
+        "H": "Η",
+        "I": "Ι",
+        "K": "Κ",
+        "M": "Μ",
+        "N": "Ν",
+        "O": "Ο",
+        "P": "Ρ",
+        "T": "Τ",
+        "X": "Χ",
+        "Y": "Υ",
+        "Z": "Ζ",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -160,7 +178,7 @@ def _clean_text(value: Any) -> str | None:
     if value is None:
         return None
 
-    text = str(value).strip()
+    text = _repair_mojibake(str(value)).strip()
     return text or None
 
 
@@ -183,7 +201,28 @@ def _extract_application_type(value: str | None) -> str | None:
     if text is None:
         return None
 
-    return APPLICATION_TYPE_SPLIT_PATTERN.split(text, maxsplit=1)[0].strip() or None
+    raw_application_type = APPLICATION_TYPE_SPLIT_PATTERN.split(text, maxsplit=1)[0].strip()
+    return normalize_application_type(raw_application_type)
+
+
+def normalize_application_type(value: str | None) -> str | None:
+    """Normalize EOAA application type codes to a canonical Greek-script form."""
+    text = _clean_text(value)
+    if text is None:
+        return None
+
+    return text.upper().translate(LATIN_TO_GREEK_APPLICATION_TYPE_MAP)
+
+
+def _repair_mojibake(value: str) -> str:
+    """Repair common UTF-8-as-Latin-1 mojibake found in EOAA data sources."""
+    if "Î" not in value and "Ï" not in value:
+        return value
+
+    try:
+        return value.encode("latin-1").decode("utf-8")
+    except UnicodeError:
+        return value
 
 
 def _build_row_content_hash(*values: str | None) -> str:

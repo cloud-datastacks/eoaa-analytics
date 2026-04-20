@@ -8,7 +8,7 @@ from typing import Any
 
 import dlt
 
-from eoaa_analytics.extractor import DEFAULT_PAGE_URL, fetch_applications_page
+from eoaa_analytics.extractor import DEFAULT_PAGE_URL, fetch_applications_page, normalize_application_type
 
 DEFAULT_DATABASE_PATH = Path("data") / "eoaa_db.duckdb"
 DEFAULT_APPLICATION_TYPES_CSV_PATH = Path("data") / "application_types.csv"
@@ -105,9 +105,20 @@ def load_application_types_csv(csv_path: str | Path) -> list[dict[str, str]]:
             raise ValueError(f"Unexpected application types CSV headers: {reader.fieldnames}")
         return [
             {
-                "type": (row["type"] or "").strip(),
-                "description_en": (row["description_en"] or "").strip(),
-                "description_gr": (row["description_gr"] or "").strip(),
+                "type": normalize_application_type(row["type"]) or "",
+                "description_en": _repair_mojibake((row["description_en"] or "").strip()),
+                "description_gr": _repair_mojibake((row["description_gr"] or "").strip()),
             }
             for row in reader
         ]
+
+
+def _repair_mojibake(value: str) -> str:
+    """Repair common UTF-8-as-Latin-1 mojibake found in local reference files."""
+    if "Î" not in value and "Ï" not in value:
+        return value
+
+    try:
+        return value.encode("latin-1").decode("utf-8")
+    except UnicodeError:
+        return value
