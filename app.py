@@ -170,7 +170,7 @@ def render_applications(database_path: str) -> None:
     )
 
     controls_col_left, controls_spacer, prev_col, info_col, next_col = st.columns(
-        [1.25, 2.0, 0.32, 0.85, 0.32],
+        [1.25, 4.45, 0.24, 0.52, 0.24],
         vertical_alignment="center",
     )
 
