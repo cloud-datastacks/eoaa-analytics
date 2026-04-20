@@ -38,3 +38,12 @@ The same run also loads the local `data/application_types.csv` reference file in
 ```bash
 duckdb data/eoaa_db.duckdb "select * from eoaa_data.building_application_status limit 5"
 ```
+
+## Streamlit dashboard
+
+```bash
+streamlit run app.py
+```
+
+The first page shows the number of applications per year from
+`eoaa_data.building_application_status`, grouped by `received_date`.
